@@ -1,3 +1,5 @@
+[![Distributed Systems — Any video. Every frame. Answered.](docs/assets/hero.png)](https://distributed.systems)
+
 # Distributed Video QA MCP
 
 **Give your MCP client a video link. It downloads it with sound, transcribes it, indexes every scene, and answers questions with timestamps and the actual frames.**
@@ -12,6 +14,8 @@ Try asking your MCP client:
 > Find the moment where the architecture diagram is on screen and read me the labels.
 
 > Download this link at 1080p with audio into ~/Movies.
+
+![Fetch, listen, see, ask: the pipeline from a link to answers with timestamps and frames.](docs/assets/workflow.svg)
 
 ## What it does
 

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="500" viewBox="0 0 1440 500" role="img" aria-labelledby="title desc">
+<title id="title">Fetch. Listen. See. Ask.</title>
+<desc id="desc">A video link is downloaded with its audio merged, transcribed with Whisper, and sampled into distinct frames. Transcript and frames are embedded into one space so a question returns timestamped transcript and the frames themselves.</desc>
+<defs>
+  <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffe2c2"/><stop offset=".48" stop-color="#e2a674"/><stop offset="1" stop-color="#905939"/></linearGradient>
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#e2a674" stroke-opacity=".055"/></pattern>
+  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="m1 1 5 3-5 3" fill="none" stroke="#e2a674" stroke-width="1.4"/></marker>
+</defs>
+<rect width="1440" height="500" rx="18" fill="#0b0e13"/>
+<rect width="1440" height="500" rx="18" fill="url(#grid)"/>
+<g font-family="ui-monospace, SFMono-Regular, Consolas, monospace">
+<text x="48" y="53" fill="#e2a674" font-size="13" letter-spacing="3">THE PIPELINE / DISTRIBUTED VIDEO QA MCP</text>
+<text x="1392" y="53" text-anchor="end" fill="#83868b" font-size="12">PARALLEL · RESUMABLE · LOCAL INDEX</text>
+</g>
+<g fill="#11151b" stroke="#39312b"><rect x="48" y="98" width="300" height="246" rx="12"/><rect x="396" y="98" width="300" height="246" rx="12"/><rect x="744" y="98" width="300" height="246" rx="12"/><rect x="1092" y="98" width="300" height="246" rx="12"/></g>
+<g fill="none" stroke="#e2a674" stroke-width="2" marker-end="url(#arrow)"><path d="M354 222h34"/><path d="M702 222h34"/><path d="M1050 222h34"/></g>
+<g font-family="ui-monospace, SFMono-Regular, Consolas, monospace" fill="#e2a674" font-size="14"><text x="74" y="136">01 / FETCH</text><text x="422" y="136">02 / LISTEN</text><text x="770" y="136">03 / SEE</text><text x="1118" y="136">04 / ASK</text></g>
+<g font-family="Arial, Helvetica, sans-serif" fill="#f4efe7" font-size="28" font-weight="700"><text x="74" y="194">Link to file.</text><text x="422" y="194">Every word.</text><text x="770" y="194">Every scene.</text><text x="1118" y="194">Answer with proof.</text></g>
+<g font-family="Arial, Helvetica, sans-serif" fill="#a8aaa9" font-size="17">
+<text x="74" y="238">Pick a quality; the best</text><text x="74" y="263">audio track is merged in.</text>
+<text x="422" y="238">Whisper on-device, or API</text><text x="422" y="263">chunks cut on silence.</text>
+<text x="770" y="238">Parallel frame sampling,</text><text x="770" y="263">scene cuts, no duplicates.</text>
+<text x="1118" y="238">Timestamped transcript</text><text x="1118" y="263">plus the frames as images.</text>
+</g>
+<g stroke="url(#copper)" stroke-width="3" stroke-linecap="round"><path d="M74 310h44"/><path d="M422 310h44"/><path d="M770 310h44"/><path d="M1118 310h44"/></g>
+<path d="M48 386h1344" stroke="#2d2824"/>
+<g font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13"><text x="48" y="429" fill="#e2a674">ONE EMBEDDING SPACE</text><text x="48" y="454" fill="#92969a">Words and pictures in jina-embeddings-v4.</text><text x="516" y="429" fill="#e2a674">HYBRID RETRIEVAL</text><text x="516" y="454" fill="#92969a">Meaning, keywords and what is on screen.</text><text x="1000" y="429" fill="#e2a674">RESUMABLE JOBS</text><text x="1000" y="454" fill="#92969a">Finished stages are never redone.</text></g>
+</svg>
