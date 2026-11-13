@@ -1,0 +1,12 @@
+Recompose this exact artwork into a new layout. Keep the same objects, materials, copper and amber palette, lighting, render quality and near-black background (#0b0e13). Do not add any text, letters, numbers, logos, grid lines, crosshair marks, frames or borders.
+
+New layout (positions as a fraction of the canvas width and height):
+- The left 40% of the canvas above 55% of the height must be completely empty dark background (reserved for a headline).
+- The large softly glowing copper disc sits centred at about x = 72%, y = 42%, larger than before (diameter about 46% of the canvas height).
+- The bronze slab plinth spans x from about 36% to 95%, its top surface at about y = 70%, receding in perspective, with soft reflections; the floor below it fades to black.
+- The translucent glass video player window floats LOW and to the LEFT: its left edge at about x = 40%, vertically between y = 55% and y = 82%, resting just above the left end of the plinth.
+- The copper film strip and the luminous gold audio waveform ribbon flow from that window up and to the right into the constellation of copper and amber glass spheres, which sits in front of the disc at about x = 64%, y = 45%.
+- The bright light trace with three glowing node dots rises from the constellation to the translucent glass answer card floating at the upper right, about x = 82% to 94%, y = 22% to 46%.
+- Keep everything at least 4% from the right edge and 3% from the top and bottom edges.
+
+The result should feel like a premium product hero shot: bold, close, filling the right side of the frame from top to bottom, with the empty headline area at the top left.
