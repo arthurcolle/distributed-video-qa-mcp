@@ -4,6 +4,7 @@
 
 **Give your MCP client a video link. It downloads the video with sound, transcribes it, indexes every scene, and answers questions with timestamps and the actual frames. On a Mac, all of it runs locally, with no API keys.**
 
+[![Verify](https://github.com/arthurcolle/distributed-video-qa-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/arthurcolle/distributed-video-qa-mcp/actions/workflows/ci.yml)
 **v0.3.0 · 19 typed tools · 5 resources · 5 prompts · local MLX or hosted backends · Python 3.11+ · MIT**
 
 [Quick start](#quick-start) · [Backends](#backends) · [Verification](#verification-with-jev) · [Interface](#interface) · [Tool contract](docs/tool-contract.md) · [How it works](#how-it-works) · [Operations](docs/operations.md) · [Changelog](CHANGELOG.md)
