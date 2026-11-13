@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "distributed-video-qa-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server that downloads video (with audio merged), transcribes it, embeds frames and transcript in one multimodal space, and answers questions with timestamped evidence."
 readme = "README.md"
 requires-python = ">=3.11"

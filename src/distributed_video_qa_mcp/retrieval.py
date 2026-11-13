@@ -14,6 +14,7 @@ import numpy as np
 
 from .embed import QUERY, Embedder
 from .store import Store
+from .text import STOPWORDS as _STOP
 
 RRF_K = 60
 # The transcript is searched two ways and frames one way. Halving each
@@ -93,7 +94,25 @@ def _fuse(store: Store, channels: dict[str, tuple[str, list[tuple[int, float]]]]
     return hits
 
 
-async def search(
+@dataclass
+class Evidence:
+    """How strongly anything matched, before fusion discards the raw scores."""
+
+    best_said_similarity: float | None = None
+    best_shown_similarity: float | None = None
+    keyword_matches: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "best_said_similarity": None if self.best_said_similarity is None else round(self.best_said_similarity, 4),
+            "best_shown_similarity": None
+            if self.best_shown_similarity is None
+            else round(self.best_shown_similarity, 4),
+            "keyword_matches": self.keyword_matches,
+        }
+
+
+async def search_with_evidence(
     store: Store,
     embedder: Embedder,
     query: str,
@@ -103,18 +122,30 @@ async def search(
     top_k: int = 10,
     start: float | None = None,
     end: float | None = None,
-) -> list[Hit]:
+) -> tuple[list[Hit], Evidence]:
     """Find moments by meaning (dense), by wording (BM25) and by what is on screen (text-to-image)."""
     vector = (await embedder.embed_texts([query], QUERY))[0]
     depth = max(top_k * 4, 24)
     scope = {"video_ids": video_ids, "start": start, "end": end, "top_k": depth}
     channels: dict[str, tuple[str, list[tuple[int, float]]]] = {}
+    evidence = Evidence()
     if "transcript" in modalities:
-        channels["said_semantic"] = ("passage", store.dense("passage", vector, embedder.model, **scope))
-        channels["said_keyword"] = ("passage", store.lexical(query, **scope))
+        said = store.dense("passage", vector, embedder.model, **scope)
+        keyword = store.lexical(query, **scope)
+        channels["said_semantic"] = ("passage", said)
+        channels["said_keyword"] = ("passage", keyword)
+        evidence.best_said_similarity = said[0][1] if said else None
+        evidence.keyword_matches = len(keyword)
     if "frames" in modalities:
-        channels["shown"] = ("frame", store.dense("frame", vector, embedder.model, **scope))
-    return _fuse(store, channels, top_k)
+        shown = store.dense("frame", vector, embedder.model, **scope)
+        channels["shown"] = ("frame", shown)
+        evidence.best_shown_similarity = shown[0][1] if shown else None
+    return _fuse(store, channels, top_k), evidence
+
+
+async def search(store: Store, embedder: Embedder, query: str, **kwargs: Any) -> list[Hit]:
+    hits, _ = await search_with_evidence(store, embedder, query, **kwargs)
+    return hits
 
 
 async def search_by_image(
@@ -225,16 +256,6 @@ def build_moments(
 
 # ---------------------------------------------------------------- chapters
 
-_STOP = frozenset(
-    """a about after again all also am an and any are as at be because been before being but by can could
-    did do does doing down for from get go going got had has have he her here him his how i if in into is
-    it its just know like me more most my no not now of on one only or other our out over really right
-    so some than that the their them then there these they thing things think this those to too up us
-    very was we well were what when where which who why will with would yeah you your
-    i'm it's that's they're we're you're don't didn't can't won't isn't there's here's let's i've you've
-    i'd i'll you'll we'll he's she's what's want say said see look make made new way lot even still much
-    many every each another going gonna actually basically""".split()
-)
 _TOKEN = re.compile(r"[a-z][a-z'-]{2,}")
 
 

@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 
 from distributed_video_qa_mcp import download, media, retrieval
+from distributed_video_qa_mcp.app import render_transcript
 from distributed_video_qa_mcp.config import Settings
 from distributed_video_qa_mcp.errors import VideoQAError
 from distributed_video_qa_mcp.netguard import check_url
-from distributed_video_qa_mcp.server import render_transcript
 from distributed_video_qa_mcp.store import fts_query
 from distributed_video_qa_mcp.transcribe import Segment, build_passages, tidy
 
@@ -62,8 +62,9 @@ def test_build_passages_overlap_and_coverage():
 
 
 def test_fts_query_is_quoted_and_safe():
-    assert fts_query('what about "NEAR" AND (x)?') == '"what" OR "about" OR "near" OR "and"'
-    assert fts_query("!!!") == ""
+    assert fts_query('what about "NEAR" AND (x)?') == '"near"'
+    assert fts_query("!!!") == "" and fts_query("what is the") == ""
+    assert fts_query("capital of Australia") == '"capital" OR "australia"'
 
 
 def test_format_selector():

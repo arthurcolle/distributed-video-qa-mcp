@@ -7,13 +7,15 @@ import ipaddress
 import json
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import __version__, retrieval
+from .app import App
 from .config import Settings, load_settings
 from .errors import VideoQAError
 from .pipeline import IngestOptions
-from .server import App, build_server
+from .server import build_server
 
 
 def _log(level: str) -> None:
@@ -85,21 +87,14 @@ async def _serve(args: argparse.Namespace) -> int:
 
 
 async def _doctor(_: argparse.Namespace) -> int:
-    settings = load_settings()
-    mcp, app = build_server(settings)
+    app = App(load_settings())
     try:
-        result = await mcp.call_tool("video_status", {})
-        status = getattr(result, "structured_content", None) or {}
-        print(json.dumps(status, indent=2))
-        problems = [
-            name
-            for name in ("ffmpeg", "ffprobe", "transcription", "embedding")
-            if str(status.get(name, "")).startswith(("missing", "unavailable"))
-        ]
-        if problems:
-            print(f"\nnot ready: {', '.join(problems)}", file=sys.stderr)
-            return 1
-        return 0
+        status = app.status()
+        print(status.model_dump_json(indent=2))
+        for problem in status.problems:
+            print(f"problem: {problem}", file=sys.stderr)
+        print("ready" if status.ready else "not ready", file=sys.stderr)
+        return 0 if status.ready else 1
     finally:
         await app.shutdown()
 
@@ -125,6 +120,17 @@ async def _ingest(args: argparse.Namespace) -> int:
         return 0 if job["status"] == "succeeded" else 1
     finally:
         await app.shutdown()
+
+
+async def _contract(args: argparse.Namespace) -> int:
+    from .contract import render
+
+    text = await render()
+    if args.output:
+        Path(args.output).write_text(text)
+    else:
+        sys.stdout.write(text)
+    return 0
 
 
 async def _search(args: argparse.Namespace) -> int:
@@ -164,11 +170,16 @@ def main(argv: list[str] | None = None) -> None:
     search.add_argument("query")
     search.add_argument("--top-k", type=int, default=8)
 
+    contract = sub.add_parser("contract", help="print the generated tool contract (docs/tool-contract.md)")
+    contract.add_argument("--output", "-o", help="write to this file instead of stdout")
+
     args = parser.parse_args(argv)
     if args.command is None:
         args = parser.parse_args([*(argv or sys.argv[1:]), "serve"])
     _log(args.log_level)
-    handler = {"serve": _serve, "doctor": _doctor, "ingest": _ingest, "search": _search}[args.command]
+    handler = {"serve": _serve, "doctor": _doctor, "ingest": _ingest, "search": _search, "contract": _contract}[
+        args.command
+    ]
     try:
         raise SystemExit(asyncio.run(handler(args)))
     except VideoQAError as exc:

@@ -232,8 +232,42 @@ async def probe(url: str, settings: Settings) -> dict[str, Any]:
 
     info = await asyncio.to_thread(work)
     if info.get("_type") == "playlist":
-        raise VideoQAError("playlist", "the URL is a playlist; pass a single video URL")
+        raise VideoQAError("playlist", "the URL is a playlist")
     return info
+
+
+async def expand(url: str, settings: Settings, *, limit: int) -> tuple[list[str], bool]:
+    """Resolve a URL to video URLs: itself, or the first `limit` entries of a playlist or channel.
+
+    Returns (urls, was_playlist). Uses flat extraction, so it lists entries
+    without fetching each video's formats.
+    """
+    import yt_dlp
+    from yt_dlp.utils import DownloadError
+
+    url = check_url(url, allow_private=settings.allow_private_hosts)
+    options = _base_options(settings)
+    options.update({"extract_flat": "in_playlist", "noplaylist": False, "playlistend": limit})
+
+    def work() -> dict[str, Any]:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            try:
+                info = ydl.extract_info(url, download=False)
+            except DownloadError as exc:
+                raise VideoQAError("probe_failed", _clean(str(exc))) from exc
+            return ydl.sanitize_info(info)  # type: ignore[return-value]
+
+    info = await asyncio.to_thread(work)
+    if info.get("_type") != "playlist":
+        return [url], False
+    urls: list[str] = []
+    for entry in info.get("entries") or []:
+        target = entry.get("url") or entry.get("webpage_url")
+        if target and target.startswith(("http://", "https://")) and entry.get("_type") != "playlist":
+            urls.append(target)
+        if len(urls) >= limit:
+            break
+    return urls, True
 
 
 def _clean(message: str) -> str:
@@ -322,7 +356,7 @@ async def download(
 
     info = await asyncio.to_thread(work)
     if info.get("_type") == "playlist":
-        raise VideoQAError("playlist", "the URL is a playlist; pass a single video URL")
+        raise VideoQAError("playlist", "the URL is a playlist")
     requested = info.get("requested_downloads") or []
     if not requested or not requested[0].get("filepath"):
         raise VideoQAError(

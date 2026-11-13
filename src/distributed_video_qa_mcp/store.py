@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from .text import STOPWORDS
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS videos (
   id TEXT PRIMARY KEY,
@@ -107,8 +109,9 @@ _WORD = re.compile(r"[\w']+", re.UNICODE)
 
 
 def fts_query(text: str) -> str:
-    """Turn free text into a safe FTS5 expression: quoted terms joined by OR."""
-    terms = [t for t in dict.fromkeys(w.lower() for w in _WORD.findall(text)) if len(t) > 1]
+    """Turn free text into a safe FTS5 expression: quoted content words joined by OR."""
+    words = (w.lower() for w in _WORD.findall(text))
+    terms = [t for t in dict.fromkeys(words) if len(t) > 1 and t not in STOPWORDS]
     return " OR ".join('"' + term.replace('"', "") + '"' for term in terms[:32])
 
 
@@ -369,6 +372,24 @@ class Store:
         times = np.asarray([row["t0"] for row in rows], dtype=np.float32)
         matrix = np.frombuffer(b"".join(row["vec"] for row in rows), dtype=np.float32).reshape(len(rows), dim)
         return times, matrix
+
+    def find_phrase(
+        self, phrase: str, *, video_ids: Sequence[str] | None = None, limit: int = 200
+    ) -> list[dict[str, Any]]:
+        """Every transcript segment containing `phrase`, case-insensitively, in time order."""
+        escaped = phrase.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        sql = (
+            'SELECT s.video_id, v.title, s.start, s."end", s.text FROM segments s '
+            "JOIN videos v ON v.id = s.video_id WHERE s.text LIKE ? ESCAPE '\\'"
+        )
+        params: list[Any] = [f"%{escaped}%"]
+        if video_ids is not None:
+            if not video_ids:
+                return []
+            sql += f" AND s.video_id IN ({','.join('?' for _ in video_ids)})"
+            params.extend(video_ids)
+        params.append(limit)
+        return [dict(row) for row in self._rows(sql + " ORDER BY v.created_at, s.start LIMIT ?", params)]
 
     # ------------------------------------------------------------ search
 
