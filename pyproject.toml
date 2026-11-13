@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "distributed-video-qa-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "MCP server that downloads video (with audio merged), transcribes it, embeds frames and transcript in one multimodal space, and answers questions with timestamped evidence."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -30,8 +30,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mlx = ["mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+# Apple Silicon: on-device Whisper and on-device jina-embeddings-v4 (no API keys needed).
+mlx = [
+  "mlx>=0.29; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "mlx-whisper>=0.4; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "tokenizers>=0.21; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "transformers>=4.52; sys_platform == 'darwin' and platform_machine == 'arm64'",
+  "huggingface_hub>=0.30; sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
 faster-whisper = ["faster-whisper>=1.1"]
+# Optional evidence verification with Jev 1.14 (TypeSafe). Needs TYPESAFE_API_KEY.
+jev = ["typesafe-sdk>=0.7.5,<0.8"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 
 [project.scripts]

@@ -46,6 +46,7 @@ from .netguard import check_url, is_url
 from .pipeline import IngestOptions
 from .prompts import register_prompts
 from .resources import register_resources
+from .verify import SUPPORT_THRESHOLD
 
 INSTRUCTIONS = """\
 Download, index and question video. Every tool returns typed structured content.
@@ -118,6 +119,7 @@ def build_server(settings: Settings) -> tuple[MCPServer, App]:
         instructions=INSTRUCTIONS,
         version=__version__,
         website_url="https://github.com/arthurcolle/distributed-video-qa-mcp",
+        log_level="WARNING",
     )
 
     def check_source(source: str) -> None:
@@ -291,29 +293,119 @@ def build_server(settings: Settings) -> tuple[MCPServer, App]:
         max_moments: Annotated[int, Field(ge=1, le=12, description="Moments to return.")] = 5,
         frames_per_moment: Annotated[int, Field(ge=0, le=4, description="Images attached per moment.")] = 2,
         image_px: ImagePx = 768,
+        verify: Annotated[
+            bool | None,
+            Field(
+                description="Have Jev 1.14 judge whether each moment's transcript answers the question and whether "
+                "each frame shows it, rerank by that, and rescue with a frames-only search when nothing is "
+                "supported. Sends excerpts and frames to TypeSafe. Default: DVQA_VERIFY (off)."
+            ),
+        ] = None,
     ) -> Annotated[CallToolResult, AskResult]:
         """The moments most relevant to a question, as evidence: for each, the transcript around it with
         timestamps and the frames from it as images (in `moments` order). Answer from the evidence and cite
-        times. `evidence` gives the raw best similarities so you can tell a weak match from a strong one."""
-        hits, evidence = await retrieval.search_with_evidence(
-            app.store, app.embedder, question, video_ids=app.scope(video_ids), top_k=max(12, max_moments * 4)
+        times. With verify, each moment carries calibrated support probabilities and `evidence.supported`
+        says whether the video answers the question at all."""
+        verify_on = settings.verify_default if verify is None else verify
+        scope = app.scope(video_ids)
+        hits, raw = await retrieval.search_with_evidence(
+            app.store, app.embedder, question, video_ids=scope, top_k=max(12, max_moments * 4)
         )
-        moments = retrieval.build_moments(app.store, hits, max_moments=max_moments, frames_per_moment=frames_per_moment)
-        guidance = "Answer only from this evidence and cite times as m:ss. Images follow in moment order."
+        candidates = max_moments + 2 if verify_on else max_moments
+        moments = [
+            m.to_dict()
+            for m in retrieval.build_moments(
+                app.store, hits, max_moments=candidates, frames_per_moment=frames_per_moment
+            )
+        ]
+        evidence = {**raw.to_dict(), "verified": False}
+        if verify_on:
+            try:
+                moments, verdict = await _verify(question, moments, scope, frames_per_moment)
+                evidence.update(verdict)
+            except VideoQAError as exc:
+                if exc.code == "verify_unavailable":
+                    raise
+                evidence["verify_error"] = str(exc)
+        moments = moments[:max_moments]
         if not moments:
             guidance = "Nothing relevant was retrieved. Check video_list, or rephrase the question."
+        elif evidence.get("supported") is False:
+            guidance = (
+                "The verifier found no moment that answers this. Say the video does not appear to cover it, "
+                "unless the images show otherwise."
+            )
+        else:
+            guidance = "Answer only from this evidence and cite times as m:ss. Images follow in moment order."
         result = AskResult(
             question=question,
-            moments=[{**m.to_dict(), "title": app.title(m.video_id)} for m in moments],
-            evidence=evidence.to_dict(),
+            moments=[{**m, "title": app.title(m["video_id"])} for m in moments],
+            evidence=evidence,
             guidance=guidance,
         )
-        images = [
-            (f"Frame from {m.video_id} at {retrieval.clock(f['t'])}", Path(f["path"]))
-            for m in moments
-            for f in m.frames
-        ]
+        images = [(f"Frame from {m['video_id']} at {f['at']}", Path(f["path"])) for m in moments for f in m["frames"]]
         return _with_images(result, await app.images(images, image_px))
+
+    async def _verify(
+        question: str, moments: list[dict], scope: list[str] | None, frames_per_moment: int
+    ) -> tuple[list[dict], dict]:
+        """Judge every moment, rerank by support, and fall back to frames when nothing is supported."""
+        verifier = app.verifier
+
+        async def judge(moment: dict) -> dict:
+            paths = [f["path"] for f in moment["frames"] if f.get("path")]
+            verdict = await verifier.judge(question, moment["transcript"], paths)
+            for frame in moment["frames"]:
+                frame["shows"] = round(verdict.frames.get(frame["path"], 0.0), 3) if frame.get("path") else None
+            moment["transcript_answers"] = None if verdict.answers is None else round(verdict.answers, 3)
+            moment["support"] = round(verdict.support, 3)
+            return moment
+
+        try:
+            moments = list(await asyncio.gather(*(judge(m) for m in moments)))
+        except VideoQAError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - provider errors become a soft failure
+            raise VideoQAError("verify_failed", f"{type(exc).__name__}: {exc}") from exc
+        moments.sort(key=lambda m: -(m["support"] or 0.0))
+        rescued = False
+        if not moments or moments[0]["support"] < SUPPORT_THRESHOLD:
+            # Some answers are only on screen. Judge the best frame matches one by one, then build moments
+            # around the frames that pass, so a good frame is never hidden behind a merged window.
+            frame_hits, _ = await retrieval.search_with_evidence(
+                app.store, app.embedder, question, video_ids=scope, modalities=["frames"], top_k=6
+            )
+            judged = {f["path"]: f.get("shows") for m in moments for f in m["frames"] if f.get("path")}
+            fresh = [h for h in frame_hits if h.frame_path and h.frame_path not in judged]
+            try:
+                scores = await asyncio.gather(*(verifier.frame_shows(question, h.frame_path) for h in fresh))
+                judged.update({h.frame_path: s for h, s in zip(fresh, scores, strict=True)})
+                good = [h for h in frame_hits if (judged.get(h.frame_path) or 0.0) >= SUPPORT_THRESHOLD]
+                extra = [
+                    m.to_dict()
+                    for m in retrieval.build_moments(app.store, good, frames_per_moment=max(1, frames_per_moment))
+                ]
+                answers = await asyncio.gather(*(verifier.transcript_answers(question, m["transcript"]) for m in extra))
+            except VideoQAError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise VideoQAError("verify_failed", f"{type(exc).__name__}: {exc}") from exc
+            for moment, answer in zip(extra, answers, strict=True):
+                for frame in moment["frames"]:
+                    frame["shows"] = round(judged.get(frame["path"]) or 0.0, 3)
+                moment["transcript_answers"] = None if answer is None else round(answer, 3)
+                moment["support"] = round(max([answer or 0.0, *(f["shows"] for f in moment["frames"])]), 3)
+            if extra:
+                rescued = True
+                moments = sorted(extra, key=lambda m: -m["support"]) + moments
+        best = max((m["support"] for m in moments), default=0.0)
+        return moments, {
+            "verified": True,
+            "verifier": verifier.model,
+            "supported": best >= SUPPORT_THRESHOLD,
+            "best_support": round(best, 3),
+            "rescued_by_frames": rescued,
+        }
 
     @mcp.tool(title="Search inside videos", annotations=READ)
     async def video_search(

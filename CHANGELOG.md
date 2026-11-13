@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+### Local-first
+
+- **jina-embeddings-v4 runs locally on Apple Silicon** through Jina's official 8-bit MLX port, pinned to a revision, with no PyTorch. It matches the hosted API at cosine 0.999 for text and 0.988–0.995 for frames, so both backends share the model name and indexes are interchangeable. A full index of a 6½-minute video takes 27.5 s with no API keys, against 8–12 minutes on the rate-limited API.
+- `DVQA_EMBED_BACKEND=auto` is the new default: MLX when available, otherwise the Jina API.
+- New `fetch-models` command; `doctor` and `video_status` report where embeddings run and whether the weights are cached.
+- The published MLX port caches results by Python object id, frees its vision weights after the first image, and mishandles padding in its compiled text path. The server bypasses all three, and Apple-only tests pin each failure.
+
+### Verification
+
+- `video_ask(verify=true)` uses Jev 1.14 (TypeSafe) to judge whether each moment's transcript answers the question and whether each frame shows it, then reranks by support. The result adds `evidence.supported`, and a frames-only rescue runs when nothing is supported. Each moment reports `transcript_answers`, `support` and each frame's `shows`.
+- Off by default (it sends excerpts and frames to TypeSafe). Enable it per call, or with `DVQA_VERIFY=jev`. New error codes: `verify_unavailable` and `verify_failed`.
+
+
 ## 0.2.0
 
 ### Interface

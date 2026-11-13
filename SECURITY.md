@@ -15,6 +15,8 @@ The server fetches URLs and reads files on behalf of a language model, so its in
 | Resource use | Limits on duration, file size, frames per video, concurrent jobs and batch size; live streams are refused. |
 | HTTP transport | Bearer token compared in constant time; non-loopback binding requires a token; optional Host-header allow-list. |
 | Secrets | Read from the environment only; never logged or returned by tools. |
+| Third-party data flow | With local MLX backends, nothing leaves the machine except the downloads you ask for. The Jina API backend sends frames and passages to Jina. Verification sends the question, candidate transcript lines and frames to TypeSafe, and only when requested. |
+| Model code | The local embedder executes `model.py`/`load_model.py` from `jinaai/jina-embeddings-v4-mlx-8bit` at a pinned commit, in effect `trust_remote_code` at a fixed revision. Review those files before changing the pin. |
 
 ## Known limits
 

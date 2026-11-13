@@ -55,23 +55,38 @@ Local files you ingest by path are read in place, never copied or deleted.
 
 **Upgrades.** Every stage stores a signature of the settings that produced it. After an upgrade or a settings change, re-ingest a video to recompute only the stages whose inputs changed. Changing the embedding model or dimension re-embeds both branches. Changing frame settings or `DVQA_EMBED_IMAGE_PX` redoes frames only.
 
+## Local models (Apple Silicon)
+
+- `distributed-video-qa-mcp fetch-models` downloads `jinaai/jina-embeddings-v4-mlx-8bit` (3.9 GB) and the base model's tokenizer and preprocessing files, each pinned to a commit. They live in the Hugging Face cache (`~/.cache/huggingface`, or `HF_HOME`); delete that folder to reclaim the space.
+- The embedding model loads on first use (about 1 s once cached) and stays resident, using about 5 GB of unified memory. MLX Whisper keeps its own model resident as well. On a 16 GB Mac, keep `DVQA_MAX_CONCURRENT_JOBS=1`.
+- All MLX work runs on one thread per model. Concurrent jobs queue for it rather than contending for the GPU.
+- `doctor` reports whether the weights are cached. Without them, the first ingest downloads them before embedding starts.
+
+## Verification (Jev)
+
+- Install the `jev` extra and set `TYPESAFE_API_KEY`. `video_status.verification` shows whether it is available and whether it runs by default (`DVQA_VERIFY=jev`).
+- Cost per verified `video_ask`: one judgement per candidate moment (max_moments + 2) plus one per attached frame, and up to six more in a frames-only rescue. That is typically 10–20 calls, ~1,100 input tokens each, and 0.7–0.9 s, since calls run eight at a time.
+- If TypeSafe fails mid-call, the answer still returns unverified, with `evidence.verify_error` set. If verification isn't configured at all, `verify=true` fails with `verify_unavailable`.
+- Data sent: the question, the transcript lines of each candidate moment, and the candidate frames (JPEG, ≤768 px). Nothing is sent unless verification is requested.
+
 ## Capacity and cost
 
 Measured on an Apple M4 Max with the defaults:
 
 | Resource | Per hour of video | Notes |
 | --- | --- | --- |
+| Full local ingest (MLX Whisper + MLX embeddings) | ~4–5 min | 27.5 s for a 6:36 video on an M4 Max |
 | Transcription (MLX large-v3-turbo) | ~80 s | 47× realtime here; other backends depend on hardware or the provider |
 | Frame sampling | ~15 s | Scales with `DVQA_CPU_WORKERS` |
 | Frames kept | ~700 at a 5 s interval, before de-duplication | Capped by `DVQA_MAX_FRAMES` (default 600 per video) |
-| Embedding tokens | ~0.9 M for 600 frames at 448 px, plus ~25 k for the transcript | Images dominate; cost scales with pixel area |
-| Embedding time | ~10 min at 90 k tokens/min | Bound by the Jina tier, not the server |
+| Embedding, local MLX | ~100 s for 600 frames (~160 ms each) | No cost; bound by the GPU |
+| Embedding, Jina API | ~0.9 M tokens for 600 frames at 448 px, plus ~25 k for the transcript; ~10 min at 90 k tokens/min | Images dominate; cost scales with pixel area |
 | Disk | ~60 MB of frames plus the source (720p ≈ 0.5–1 GB/h) | Delete with `video_delete` |
 | Index RAM | 4 KB per vector at 1,024 dimensions | 300,000 vectors ≈ 1.2 GB, 35 ms per query |
 
 Levers, in order of effect:
 
-1. **`DVQA_EMBED_TPM`.** Set it to your Jina tier's tokens-per-minute limit. It is the main bound on ingest throughput.
+1. **Backend.** On Apple Silicon the local MLX embedder removes the token budget entirely. With the Jina API, set `DVQA_EMBED_TPM` to your tier's tokens-per-minute limit; it is then the main bound on ingest throughput.
 2. **`DVQA_EMBED_IMAGE_PX`.** 448 px costs ~1,440 tokens per frame and 640 px ~2,990. Frames returned to the model are always full resolution, so this only affects retrieval.
 3. **`DVQA_FRAME_INTERVAL` and `DVQA_MAX_FRAMES`.** For lectures and screencasts, a longer interval loses little because scene cuts are always kept. For fast-cut footage, keep it short.
 4. **`DVQA_EMBED_DIM`.** 512 halves index RAM and query time with a small recall cost. Changing it re-embeds on the next ingest.
@@ -96,4 +111,7 @@ Levers, in order of effect:
 | `private_host` on an internal media server | SSRF guard | Set `DVQA_ALLOW_PRIVATE_HOSTS=1` on trusted deployments only |
 | `path_not_allowed` | Path outside allowed roots | Add the folder to `DVQA_ALLOWED_ROOTS` (`:`-separated) |
 | Job shows `interrupted` | The server restarted mid-job | Run the same ingest again; completed stages are reused |
+| `verify_unavailable` | Jev not configured | `uv pip install -e ".[jev]"` and set `TYPESAFE_API_KEY` |
+| First query after start takes ~2 s | The MLX embedding model is loading | Expected once per process |
+| `jina-embeddings-v4 MLX weights are not available` | Weights not downloaded and offline | Run `distributed-video-qa-mcp fetch-models` while online |
 | `video_ask` returns weak evidence | The video does not cover it, or the wording differs | Check `evidence.keyword_matches` and the similarities; try `video_search` with other words or `video_find_phrase` |

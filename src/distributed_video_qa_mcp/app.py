@@ -18,6 +18,7 @@ from . import download as dl
 from . import transcribe as stt
 from .config import Settings
 from .embed import Embedder, make_embedder
+from .embed import describe_backend as describe_embedder
 from .errors import VideoQAError
 from .models import Job, StatusReport, VideoDetail, VideoSummary
 from .pipeline import TERMINAL, Pipeline
@@ -93,6 +94,16 @@ class App:
         self.store = Store(settings.db_path)
         self.store.interrupt_stale_jobs()
         self.pipeline = Pipeline(settings, self.store, lambda: make_embedder(settings))
+        self._verifier: Any = None
+
+    @property
+    def verifier(self) -> Any:
+        """The Jev verifier, built on first use. Raises verify_unavailable when not configured."""
+        if self._verifier is None:
+            from .verify import JevVerifier
+
+            self._verifier = JevVerifier(self.settings)
+        return self._verifier
 
     @property
     def embedder(self) -> Embedder:
@@ -188,16 +199,15 @@ class App:
             ytdlp = yt_dlp.version.__version__
         except Exception as exc:  # noqa: BLE001
             ytdlp = f"unavailable ({exc})"
-        if settings.embed_backend == "jina" and not settings.embed_api_key:
-            embedding = "unavailable (set JINA_API_KEY)"
-        else:
-            model = settings.embed_model if settings.embed_backend == "jina" else "hash-test-embedder"
-            embedding = f"{model} at {settings.embed_dim} dimensions"
+        embedding = describe_embedder(settings)
         transcription = stt.describe_backend(settings)
+        from . import verify
+
+        verification = verify.describe(settings)
         runtimes = sorted(dl.js_runtimes())
         problems = [f"{name} is not on PATH" for name, path in tools.items() if not path]
         if embedding.startswith("unavailable"):
-            problems.append("no embedding backend: set JINA_API_KEY")
+            problems.append("no embedding backend: install the mlx extra or set JINA_API_KEY")
         if transcription.startswith("unavailable"):
             problems.append("no transcription backend; ingest will fail unless transcribe=false")
         if not runtimes:
@@ -213,6 +223,7 @@ class App:
             js_runtimes=runtimes,
             transcription=transcription,
             embedding=embedding,
+            verification=verification,
             state_dir=str(settings.state_dir),
             limits={
                 "max_concurrent_jobs": settings.max_concurrent_jobs,
@@ -225,5 +236,7 @@ class App:
         )
 
     async def shutdown(self) -> None:
+        if self._verifier is not None:
+            await self._verifier.aclose()
         await self.pipeline.shutdown()
         self.store.close()

@@ -1,6 +1,6 @@
 # Tool contract
 
-_Generated from the server definition (v0.2.0) by `distributed-video-qa-mcp contract`. Do not edit by hand; `tests/test_contract_doc.py` fails when this file is stale._
+_Generated from the server definition (v0.3.0) by `distributed-video-qa-mcp contract`. Do not edit by hand; `tests/test_contract_doc.py` fails when this file is stale._
 
 ## Conventions
 
@@ -244,7 +244,7 @@ Find evidence across every indexed video.
 
 **Gather evidence for a question** · read-only · local · returns **`AskResult`**
 
-The moments most relevant to a question, as evidence: for each, the transcript around it with timestamps and the frames from it as images (in `moments` order). Answer from the evidence and cite times. `evidence` gives the raw best similarities so you can tell a weak match from a strong one.
+The moments most relevant to a question, as evidence: for each, the transcript around it with timestamps and the frames from it as images (in `moments` order). Answer from the evidence and cite times. With verify, each moment carries calibrated support probabilities and `evidence.supported` says whether the video answers the question at all.
 
 | Argument | Type | Default | Limits | Description |
 | --- | --- | --- | --- | --- |
@@ -253,6 +253,7 @@ The moments most relevant to a question, as evidence: for each, the transcript a
 | `max_moments` | int | `5` | ≥1, ≤12 | Moments to return. |
 | `frames_per_moment` | int | `2` | ≥0, ≤4 | Images attached per moment. |
 | `image_px` | int | `768` | ≥256, ≤1568 | Long side of returned images, in pixels. |
+| `verify` | bool \| null | `null` |  | Have Jev 1.14 judge whether each moment's transcript answers the question and whether each frame shows it, rerank by that, and rescue with a frames-only search when nothing is supported. Sends excerpts and frames to TypeSafe. Default: DVQA_VERIFY (off). |
 
 Returns `AskResult`:
 
@@ -523,7 +524,8 @@ Returns `StatusReport`:
 | `yt_dlp` | string | yt-dlp version. |
 | `js_runtimes` | string[] | JavaScript runtimes yt-dlp can use for YouTube's challenge. |
 | `transcription` | string | Active speech-to-text backend. |
-| `embedding` | string | Active embedding model and dimension. |
+| `embedding` | string | Active embedding model, dimension and where it runs. |
+| `verification` | string | Evidence verifier (Jev) and whether video_ask uses it by default. |
 | `state_dir` | string | Where the index and media live. |
 | `limits` | Limits | Capacity settings. |
 | `index` | IndexStats | Index size. |
@@ -619,6 +621,7 @@ A background download or ingest.
 | `at` | string | m:ss. |
 | `t` | number | Seconds. |
 | `path` | string \| null | Indexed frame file; null for frames decoded on the fly. |
+| `shows` | number \| null | With verify: probability that the frame shows what the question asks about. |
 
 ### `Moment`
 
@@ -633,6 +636,8 @@ A background download or ingest.
 | `matched_by` | string[] | Channels that contributed. |
 | `transcript` | TranscriptLine[] | What was said in the window, with 8 s of context either side. |
 | `frames` | FrameRef[] | Frames from the window, attached as images after the JSON in this order. |
+| `transcript_answers` | number \| null | With verify: probability that the transcript window directly answers the question. |
+| `support` | number \| null | With verify: the strongest of transcript_answers and the frames' `shows`; moments are ranked by it. |
 
 ### `Evidence`
 
@@ -643,6 +648,12 @@ Raw match strength, before rank fusion discards it. Compare values within one em
 | `best_said_similarity` | number \| null | Top transcript cosine similarity. |
 | `best_shown_similarity` | number \| null | Top frame cosine similarity. |
 | `keyword_matches` | int | Passages containing any of the question's words. |
+| `verified` | bool | Whether the moments were checked by the verifier. |
+| `verifier` | string \| null | Model that judged the evidence, such as 'jev-1.14.0'. |
+| `supported` | bool \| null | With verify: true when some moment's support is at least 0.5. False means the video likely does not answer the question, or retrieval missed it. |
+| `best_support` | number \| null | With verify: the highest moment support. |
+| `rescued_by_frames` | bool | With verify: true when the supported moments came from a frames-only search after transcript evidence failed. |
+| `verify_error` | string \| null | Set when verification was requested but failed; the moments are then unverified. |
 
 ### `ChannelMatch`
 
@@ -783,4 +794,6 @@ Raw match strength, before rank fusion discards it. Compare values within one em
 | `no_embed_key` | backend | no | Set JINA_API_KEY. |
 | `embed_failed` | backend | yes | Retry; finished stages are reused. Lower DVQA_EMBED_TPM if rate-limited. |
 | `config` | backend | no | Fix the named DVQA_* environment variable. |
+| `verify_unavailable` | backend | no | Install the jev extra and set TYPESAFE_API_KEY, or call without verify. |
+| `verify_failed` | backend | yes | Verification failed; the unverified evidence is still usable. |
 | `cancelled` | state | no | The job was cancelled; run the ingest again to resume. |

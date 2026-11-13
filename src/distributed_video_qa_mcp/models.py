@@ -342,6 +342,8 @@ class FrameRef(_Model):
     """Seconds."""
     path: str | None = None
     """Indexed frame file; null for frames decoded on the fly."""
+    shows: float | None = None
+    """With verify: probability that the frame shows what the question asks about."""
 
 
 class Moment(_Model):
@@ -363,6 +365,10 @@ class Moment(_Model):
     """What was said in the window, with 8 s of context either side."""
     frames: list[FrameRef]
     """Frames from the window, attached as images after the JSON in this order."""
+    transcript_answers: float | None = None
+    """With verify: probability that the transcript window directly answers the question."""
+    support: float | None = None
+    """With verify: the strongest of transcript_answers and the frames' `shows`; moments are ranked by it."""
 
 
 class Evidence(_Model):
@@ -374,6 +380,20 @@ class Evidence(_Model):
     """Top frame cosine similarity."""
     keyword_matches: int
     """Passages containing any of the question's words."""
+    verified: bool = False
+    """Whether the moments were checked by the verifier."""
+    verifier: str | None = None
+    """Model that judged the evidence, such as 'jev-1.14.0'."""
+    supported: bool | None = None
+    """With verify: true when some moment's support is at least 0.5. False means the video likely does not
+    answer the question, or retrieval missed it."""
+    best_support: float | None = None
+    """With verify: the highest moment support."""
+    rescued_by_frames: bool = False
+    """With verify: true when the supported moments came from a frames-only search after transcript evidence
+    failed."""
+    verify_error: str | None = None
+    """Set when verification was requested but failed; the moments are then unverified."""
 
 
 class AskResult(_Model):
@@ -498,7 +518,9 @@ class StatusReport(_Model):
     transcription: str
     """Active speech-to-text backend."""
     embedding: str
-    """Active embedding model and dimension."""
+    """Active embedding model, dimension and where it runs."""
+    verification: str
+    """Evidence verifier (Jev) and whether video_ask uses it by default."""
     state_dir: str
     """Where the index and media live."""
     limits: Limits

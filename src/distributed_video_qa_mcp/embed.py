@@ -276,9 +276,50 @@ class HashEmbedder:
         return _unit(np.vstack([self._image(image) for image in images]))
 
 
+def resolve_backend(settings: Settings) -> str:
+    """auto -> mlx on Apple Silicon with the extra installed, else jina when a key is set."""
+    choice = settings.embed_backend
+    if choice != "auto":
+        return choice
+    from . import embed_mlx
+
+    if embed_mlx.available():
+        return "mlx"
+    if settings.embed_api_key:
+        return "jina"
+    raise VideoQAError(
+        "no_embed_key",
+        "no embedding backend: install the 'mlx' extra on Apple Silicon, or set JINA_API_KEY for the hosted API",
+    )
+
+
+def describe_backend(settings: Settings) -> str:
+    try:
+        backend = resolve_backend(settings)
+    except VideoQAError as exc:
+        return f"unavailable ({exc.message})"
+    if backend == "mlx":
+        from . import embed_mlx
+
+        weights = "weights cached" if embed_mlx.cached() else "weights download on first use (~3.9 GB)"
+        return f"jina-embeddings-v4 at {settings.embed_dim} dimensions, local MLX 8-bit ({weights})"
+    if backend == "jina":
+        if not settings.embed_api_key:
+            return "unavailable (set JINA_API_KEY)"
+        return f"{settings.embed_model} at {settings.embed_dim} dimensions, Jina API"
+    if backend == "hash":
+        return f"hash-test-embedder at {settings.embed_dim} dimensions"
+    return f"unavailable (unknown DVQA_EMBED_BACKEND {backend!r})"
+
+
 def make_embedder(settings: Settings) -> Embedder:
-    if settings.embed_backend == "jina":
+    backend = resolve_backend(settings)
+    if backend == "mlx":
+        from .embed_mlx import MlxJinaEmbedder
+
+        return MlxJinaEmbedder(settings)
+    if backend == "jina":
         return JinaEmbedder(settings)
-    if settings.embed_backend == "hash":
+    if backend == "hash":
         return HashEmbedder(settings)
-    raise VideoQAError("config", f"unknown DVQA_EMBED_BACKEND {settings.embed_backend!r}")
+    raise VideoQAError("config", f"unknown DVQA_EMBED_BACKEND {backend!r}")

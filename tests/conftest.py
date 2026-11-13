@@ -58,4 +58,5 @@ def settings(tmp_path: Path, sample_video: Path) -> Settings:
         frame_interval=2.0,
         cpu_workers=2,
         allowed_roots=(tmp_path, sample_video.parent),
+        typesafe_api_key=None,
     )

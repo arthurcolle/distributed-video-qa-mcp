@@ -59,6 +59,10 @@ CODES: dict[str, ErrorSpec] = {
         "backend", True, "Retry; finished stages are reused. Lower DVQA_EMBED_TPM if rate-limited."
     ),
     "config": ErrorSpec("backend", False, "Fix the named DVQA_* environment variable."),
+    "verify_unavailable": ErrorSpec(
+        "backend", False, "Install the jev extra and set TYPESAFE_API_KEY, or call without verify."
+    ),
+    "verify_failed": ErrorSpec("backend", True, "Verification failed; the unverified evidence is still usable."),
     # state
     "cancelled": ErrorSpec("state", False, "The job was cancelled; run the ingest again to resume."),
 }

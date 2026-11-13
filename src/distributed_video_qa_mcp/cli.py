@@ -21,7 +21,8 @@ from .server import build_server
 def _log(level: str) -> None:
     # stdout carries the MCP protocol on stdio, so every log line goes to stderr.
     logging.basicConfig(level=level, stream=sys.stderr, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    for noisy in ("httpx", "httpx2", "typesafe_sdk", "huggingface_hub"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def _loopback(host: str) -> bool:
@@ -122,6 +123,17 @@ async def _ingest(args: argparse.Namespace) -> int:
         await app.shutdown()
 
 
+async def _fetch_models(_: argparse.Namespace) -> int:
+    from . import embed_mlx
+
+    if not embed_mlx.available():
+        print("the MLX embedder needs Apple Silicon and the 'mlx' extra", file=sys.stderr)
+        return 1
+    weights, base = await asyncio.to_thread(embed_mlx.fetch)
+    print(f"jina-embeddings-v4 MLX weights: {weights}\npreprocessing files: {base}")
+    return 0
+
+
 async def _contract(args: argparse.Namespace) -> int:
     from .contract import render
 
@@ -170,6 +182,8 @@ def main(argv: list[str] | None = None) -> None:
     search.add_argument("query")
     search.add_argument("--top-k", type=int, default=8)
 
+    sub.add_parser("fetch-models", help="download the local embedding model (~3.9 GB) ahead of first use")
+
     contract = sub.add_parser("contract", help="print the generated tool contract (docs/tool-contract.md)")
     contract.add_argument("--output", "-o", help="write to this file instead of stdout")
 
@@ -177,9 +191,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.command is None:
         args = parser.parse_args([*(argv or sys.argv[1:]), "serve"])
     _log(args.log_level)
-    handler = {"serve": _serve, "doctor": _doctor, "ingest": _ingest, "search": _search, "contract": _contract}[
-        args.command
-    ]
+    handler = {
+        "serve": _serve,
+        "doctor": _doctor,
+        "ingest": _ingest,
+        "search": _search,
+        "contract": _contract,
+        "fetch-models": _fetch_models,
+    }[args.command]
     try:
         raise SystemExit(asyncio.run(handler(args)))
     except VideoQAError as exc:

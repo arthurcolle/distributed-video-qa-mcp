@@ -59,7 +59,7 @@ class Settings:
     state_dir: Path
 
     # Embeddings. One model embeds transcript text and frame images into the same space.
-    embed_backend: str = "jina"  # jina | hash (hash is offline and for tests only)
+    embed_backend: str = "auto"  # auto | mlx | jina | hash (hash is offline and for tests only)
     embed_model: str = "jina-embeddings-v4"
     embed_dim: int = 1024
     embed_base_url: str = "https://api.jina.ai/v1"
@@ -69,6 +69,11 @@ class Settings:
     embed_image_batch: int = 12
     embed_image_px: int = 448
     embed_tokens_per_minute: int = 90_000
+
+    # Optional evidence verification (Jev 1.14 via TypeSafe).
+    typesafe_api_key: str | None = None
+    verify_default: bool = False
+    verify_model: str = "jev-1.14.0"
 
     # Transcription.
     transcribe_backend: str = "auto"  # auto | mlx | faster-whisper | api | none
@@ -155,7 +160,7 @@ def load_settings(*, http: bool = False) -> Settings:
     cookies = _env("COOKIES_FILE")
     return Settings(
         state_dir=default_state_dir(),
-        embed_backend=(_env("EMBED_BACKEND", "jina") or "jina").lower(),
+        embed_backend=(_env("EMBED_BACKEND", "auto") or "auto").lower(),
         embed_model=_env("EMBED_MODEL", "jina-embeddings-v4") or "jina-embeddings-v4",
         embed_dim=_int("EMBED_DIM", 1024, 64, 4096),
         embed_base_url=(_env("EMBED_BASE_URL", "https://api.jina.ai/v1") or "").rstrip("/"),
@@ -165,6 +170,9 @@ def load_settings(*, http: bool = False) -> Settings:
         embed_image_batch=_int("EMBED_IMAGE_BATCH", 12, 1, 64),
         embed_image_px=_int("EMBED_IMAGE_PX", 448, 128, 2048),
         embed_tokens_per_minute=_int("EMBED_TPM", 90_000, 1_000, 100_000_000),
+        typesafe_api_key=_env("TYPESAFE_API_KEY") or os.environ.get("TYPESAFE_API_KEY"),
+        verify_default=(_env("VERIFY") or "").strip().lower() in {"jev", "on", "1", "true"},
+        verify_model=_env("VERIFY_MODEL", "jev-1.14.0") or "jev-1.14.0",
         transcribe_backend=(_env("TRANSCRIBE_BACKEND", "auto") or "auto").lower(),
         whisper_model=_env("WHISPER_MODEL"),
         transcribe_base_url=_env("TRANSCRIBE_BASE_URL"),

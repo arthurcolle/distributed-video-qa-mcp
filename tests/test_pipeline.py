@@ -205,3 +205,63 @@ async def test_batch_and_errors(settings, sample_video, tmp_path):
         junk.write_text("this is not a video")
         job, _ = await call(client, "video_ingest", source=str(junk), wait_seconds=60)
         assert job.status == "failed" and job.error.startswith("ffmpeg_failed:")
+
+
+class FakeVerifier:
+    """Supports only evidence mentioning a keyword, and frames whose file name is in `good_frames`."""
+
+    model = "fake-judge"
+
+    def __init__(self, keyword: str, good_frames: set[str] = frozenset()) -> None:
+        self.keyword, self.good_frames = keyword, good_frames
+
+    async def judge(self, question, transcript, frame_paths):
+        from distributed_video_qa_mcp.verify import Judgement
+
+        said = " ".join(line["text"] for line in transcript).lower()
+        frames = {p: (0.9 if Path(p).name in self.good_frames else 0.05) for p in frame_paths}
+        return Judgement(answers=0.95 if self.keyword in said else 0.02, frames=frames)
+
+    async def transcript_answers(self, question, lines):
+        return (await self.judge(question, lines, [])).answers
+
+    async def frame_shows(self, question, path):
+        return 0.9 if Path(path).name in self.good_frames else 0.05
+
+    async def aclose(self):
+        return None
+
+
+async def test_verify_reranks_and_reports_unsupported(settings, sample_video):
+    async with serve(settings) as (client, app, _):
+        await ingest(client, sample_video)
+        app._verifier = FakeVerifier("chlorophyll")
+        asked, _ = await call(client, "video_ask", question="green leaves and sunlight", verify=True, max_moments=3)
+        assert asked.evidence.verified and asked.evidence.supported and asked.evidence.verifier == "fake-judge"
+        assert asked.moments[0].support == 0.95
+        assert any("Chlorophyll" in line.text for line in asked.moments[0].transcript)
+        assert [m.support for m in asked.moments] == sorted((m.support for m in asked.moments), reverse=True)
+
+        app._verifier = FakeVerifier("no-such-word")
+        miss, _ = await call(client, "video_ask", question="stock prices", verify=True)
+        assert miss.evidence.supported is False and "does not appear to cover" in miss.guidance
+
+        plain, _ = await call(client, "video_ask", question="green leaves and sunlight")
+        assert not plain.evidence.verified and plain.moments[0].support is None
+
+
+async def test_verify_rescues_with_frames(settings, sample_video):
+    async with serve(settings) as (client, app, _):
+        await ingest(client, sample_video)
+        last_frame = Path(app.store.frames(app.store.list_videos()[0]["id"])[-1]["path"]).name
+        app._verifier = FakeVerifier("no-such-word", good_frames={last_frame})
+        asked, _ = await call(client, "video_ask", question="a blue screen", verify=True, frames_per_moment=0)
+        assert asked.evidence.supported and asked.evidence.rescued_by_frames
+        assert any(f.path and Path(f.path).name == last_frame and f.shows == 0.9 for f in asked.moments[0].frames)
+
+
+async def test_verify_unavailable_is_a_clear_error(settings, sample_video):
+    async with serve(settings) as (client, _, _):
+        await ingest(client, sample_video)
+        result = await client.call_tool("video_ask", {"question": "anything", "verify": True})
+        assert result.is_error and "verify_unavailable" in result.content[0].text
